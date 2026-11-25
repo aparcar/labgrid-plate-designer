@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCB plate designer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: workshop tool, exact and quiet, like an engineering datasheet
+   IDEA: the drawing sheet of a machined plate: top view with dimensions beside the 3D part
+   PICTURE: the live 2D plate drawing (drag holes) and the printable part in 3D
+   COLOUR and TYPE: cobalt title strip, white sheet, pale blue zones, PCB green; Space Grotesk + Inter
+   LAYOUT: controls column left, drawing and 3D side by side, stacked below 1100px */
+:root{color-scheme:light dark;
+  --bg:light-dark(#ffffff,#0a0d18);--ink:light-dark(#0d1020,#e7eaf6);--mute:light-dark(#5a6078,#9aa2bd);
+  --zone:light-dark(#eef2ff,#141a2e);--line:light-dark(#d5dbef,#262e4a);--cobalt:#1240e0;--cobalt-ink:light-dark(#1240e0,#7d98ff);
+  --pcb:#1f8a4c;--warn:light-dark(#a3360b,#ff9a6b);--plate:light-dark(#c9d3f5,#33406e)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+h1,h2{font-family:"Space Grotesk",Inter,sans-serif;font-weight:600;margin:0}
+header{background:var(--cobalt);color:#fff;padding:12px max(2vw,14px);display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+header h1{font-size:22px;line-height:1.1;margin-right:auto}
+.seg{display:flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;gap:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:#fff;font:600 14px Inter,sans-serif;padding:9px 14px;border-radius:8px;min-height:40px;cursor:pointer}
+.seg button[aria-pressed=true]{background:#fff;color:var(--cobalt)}
+.exp{display:flex;gap:6px;flex-wrap:wrap}
+.exp button{background:#fff;color:var(--cobalt);border:0;border-radius:8px;font:600 14px Inter,sans-serif;padding:9px 14px;min-height:40px;cursor:pointer}
+.exp button.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55)}
+main{display:grid;grid-template-columns:360px minmax(0,1fr) minmax(0,1fr);height:calc(100vh - 64px);min-height:620px}
+aside{overflow-y:auto;border-right:1px solid var(--line);padding:14px 16px 40px}
+section.box{border-bottom:1px solid var(--line);padding:12px 0}
+section.box h2{font-size:15px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.sub{color:var(--mute);font-size:13px;margin:0 0 8px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px}
+.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+label{display:flex;flex-direction:column;font-size:13px;color:var(--mute);gap:3px}
+label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);font-size:14px}
+input,select,textarea{font:15px Inter,sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 8px;width:100%}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--cobalt)}
+input:focus-visible,select:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--cobalt-ink);outline-offset:1px}
+button.b{border:1px solid var(--line);background:var(--zone);color:var(--ink);border-radius:7px;font:500 14px Inter,sans-serif;padding:7px 11px;min-height:36px;cursor:pointer}
+button.b:hover{border-color:var(--cobalt-ink)}
+button.b.pri{background:var(--cobalt);border-color:var(--cobalt);color:#fff}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.boards{display:flex;flex-direction:column;gap:4px}
+.boards button{display:flex;justify-content:space-between;text-align:left;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:7px;padding:8px 10px;font:14px Inter,sans-serif;cursor:pointer;min-height:40px}
+.boards button[aria-pressed=true]{border-color:var(--cobalt-ink);background:var(--zone);font-weight:600}
+.boards small{color:var(--mute);white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-weight:500;color:var(--mute);text-align:left;font-size:12px;padding:2px 3px}
+td{padding:2px 3px}td input,td select{padding:5px 6px;font-size:14px}
+tr.sel td{background:var(--zone)}
+td.n{color:var(--mute);font-variant-numeric:tabular-nums;width:22px}
+.x{border:0;background:none;color:var(--mute);cursor:pointer;font-size:18px;padding:2px 6px}
+.msgs{list-style:none;margin:0;padding:0;font-size:14px}
+.msgs li{padding:3px 0}.msgs li.w{color:var(--warn)}
+dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px;margin:0;font-size:14px}
+dt{color:var(--mute)}dd{margin:0;font-variant-numeric:tabular-nums}
+.pane{position:relative;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+.pane .bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--zone);font-size:13px;color:var(--mute);flex-wrap:wrap}
+.pane .bar strong{color:var(--ink);font:600 14px "Space Grotesk",Inter,sans-serif}
+.pane .bar .r{margin-left:auto;display:flex;gap:10px;align-items:center}
+#sheet,#view{flex:1;position:relative;min-height:320px}
+#sheet svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;user-select:none}
+#view canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+#status{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--mute);pointer-events:none}
+textarea{min-height:70px;font:13px ui-monospace,monospace}
+.hint{font-size:12px;color:var(--mute);margin:6px 0 0}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink);max-width:min(560px,92vw)}
+@media (max-width:1300px){main{grid-template-columns:340px minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+  aside{grid-row:1/3}}
+@media (max-width:760px){main{display:flex;flex-direction:column;height:auto}
+  aside{border-right:0;order:3}.pane{min-height:420px;border-right:0;border-bottom:1px solid var(--line)}
+  header h1{font-size:19px;width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>PCB plate designer</h1>
+  <div class="seg" id="modes" role="group" aria-label="Mounting mode"></div>
+  <div class="exp" id="exports">
+    <button id="bStl">STL</button>
+    <button id="bScad">SCAD</button>
+    <button id="bZip">ZIP (STL + SCAD + design)</button>
+    <button id="bJson" class="ghost">Save design</button>
+    <button id="bLoad" class="ghost">Open design</button>
+    <button id="bCopy" class="ghost">Copy SCAD</button>
+  </div>
+  <input type="file" id="fileIn" accept=".json,application/json" hidden>
+</header>
+<main>
+  <aside id="side">
+    <section class="box"><h2 id="modeTitle"></h2><p class="sub" id="modeSub"></p><div class="grid" id="modeFields"></div></section>
+    <section class="box"><h2>Plate</h2><div class="grid" id="plateFields"></div></section>
+    <section class="box"><h2>Boards</h2>
+      <div class="boards" id="boardList"></div>
+      <div class="row">
+        <button class="b" id="addBoard">New board</button>
+        <select id="preset" aria-label="Add a board from devices.json" style="flex:1"></select>
+      </div>
+      <div class="row"><button class="b" id="dupBoard">Duplicate</button><button class="b" id="delBoard">Remove</button><button class="b" id="arrange">Arrange side by side</button></div>
+    </section>
+    <section class="box" id="boardBox"><h2>Board size and position</h2><div class="grid grid3" id="boardFields"></div>
+      <div class="row"><span class="sub" style="margin:0">Rotate</span><button class="b" data-rot="-90">↺ 90°</button><button class="b" data-rot="90">↻ 90°</button></div>
+    </section>
+    <section class="box"><h2>Mounting holes</h2>
+      <p class="sub">Measured from the board's lower left corner, as drawn before rotation. Holes can sit anywhere: drag them on the drawing, double-click the board to add one.</p>
+      <table><thead><tr><th></th><th>x</th><th>y</th><th>screw</th><th title="Use this hole">use</th><th></th></tr></thead><tbody id="holeRows"></tbody></table>
+      <div class="row"><button class="b" id="addHole">Add hole</button><button class="b" id="patBtn">Rectangle pattern…</button><button class="b" id="pasteBtn">Paste list…</button></div>
+    </section>
+    <section class="box"><h2>Check</h2><ul class="msgs" id="msgs"></ul><dl id="info" style="margin-top:8px"></dl></section>
+    <section class="box"><p class="hint">Prints flat as modelled, no supports. PETG or ASA. The SCAD file is plain OpenSCAD and renders the same part; the design file reopens here. Ctrl+Z / Ctrl+Shift+Z undo and redo, arrow keys nudge the selected hole by 0.5 mm (Shift: 0.1 mm).</p></section>
+  </aside>
+  <div class="pane"><div class="bar"><strong>Top view</strong><span id="sheetDims"></span><span class="r"><label class="chk">snap <select id="snap" style="width:auto"><option>0.1</option><option selected>0.5</option><option>1</option></select> mm</label></span></div><div id="sheet"></div></div>
+  <div class="pane"><div class="bar"><strong>3D part</strong><span id="meta"></span><span class="r"><label class="chk"><input type="checkbox" id="ghost" checked title="Boards, bars and zip ties">guides</label><button class="b" id="resetView">Reset view</button></span></div><div id="view"><div id="status"></div></div></div>
+</main>
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<script type="module" src="app.bundle.js"></script>
+</body>
+</html>
