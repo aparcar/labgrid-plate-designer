@@ -80,19 +80,27 @@ function renderSide() {
     din: [[{ k: 'clipW', label: 'Clip width (mm)', step: 1, id: 'cw' }, D.din], [{ k: 'railX', label: 'Rail position x (0 = centre)', step: 1, id: 'rx' }, D.din], [{ k: 'clear', label: 'Clip clearance (mm)', step: 0.05, id: 'dc' }, D.din], [{ k: 'latch', label: 'Latch thickness (mm)', step: 0.1, id: 'lt' }, D.din]],
     rack10: [[{ k: 'units', label: 'Height (U)', type: 'sel', num: true, opts: [[1, '1U'], [2, '2U'], [3, '3U']], id: 'u' }, D.r10], [{ k: 'depth', label: 'Depth (mm, 0 = auto)', step: 5, id: 'dp' }, D.r10],
       [{ k: 'panelW', label: 'Ear width', type: 'sel', num: true, opts: [[250, '250 mm (fits 250 bed)'], [254, '254 mm (full 10")']], id: 'pw' }, D.r10], [{ k: 'floor', label: 'Floor (mm)', step: 0.5, id: 'fl' }, D.r10]],
+    rack19h: [[{ k: 'side', label: 'Mount on rail', type: 'sel', opts: [['left', 'Left'], ['right', 'Right']], id: 'rs' }, D.r10], [{ k: 'units', label: 'Height (U)', type: 'sel', num: true, opts: [[1, '1U'], [2, '2U'], [3, '3U']], id: 'u' }, D.r10],
+      [{ k: 'depth', label: 'Depth (mm, 0 = auto)', step: 5, id: 'dp' }, D.r10], [{ k: 'floor', label: 'Floor (mm)', step: 0.5, id: 'fl' }, D.r10]],
     skadis: [[{ k: 'style', label: 'Mounting', type: 'sel', opts: [['flat', 'Flat on the board'], ['blade', 'Blade sticking out']], id: 'sks', span: 2, rerender: true }, D.sk],
       [{ k: 'fit', label: 'Hook play in slot (mm)', step: 0.1, id: 'skf' }, D.sk], [{ k: 'boardT', label: 'Board thickness (mm)', step: 0.5, id: 'skt' }, D.sk],
       ...(D.sk.style === 'flat' ? [[{ k: 'rows', label: 'Hooks', type: 'sel', opts: [['top', 'Top row only'], ['all', 'Every row (every 40 mm)']], id: 'skr', span: 2 }, D.sk]] : [])],
   }[D.mode];
+  // label: on/off for every mode, plus where it goes in the modes that offer a choice
+  const pos = { homeracker: [[['left', 'Left end'], ['right', 'Right end']], D.hr], rack10: [[['left', 'Front, left'], ['right', 'Front, right']], D.r10],
+    rack19h: [[['left', 'Front, left'], ['right', 'Front, right']], D.r10],
+    skadis: D.sk.style === 'flat' && [[['bottom', 'Bottom'], ['top', 'Top']], D.sk] }[D.mode];
+  modeSpecs.push([{ k: 'label', label: 'Label field on the front', type: 'chk', id: 'lb', span: 2, rerender: true }, D.plate]);
+  if (D.plate.label && pos) modeSpecs.push([{ k: 'label', label: 'Label position', type: 'sel', opts: pos[0], id: 'lbp' }, pos[1]]);
   $('modeFields').replaceChildren(...modeSpecs.map(([s, o]) => field(s, o)));
   const p = D.plate, auto = p.autoSize;
   const ps = [];
-  if (D.mode !== 'rack10') ps.push({ k: 't', label: 'Thickness (mm)', step: 0.5, id: 't' });
+  if (!MODES[D.mode].tray) ps.push({ k: 't', label: 'Thickness (mm)', step: 0.5, id: 't' });
   ps.push({ k: 'holeKind', label: 'Screw holes', type: 'sel', opts: [['pilot', 'Pilot (self-tapping)'], ['clear', 'Clearance (screw + nut)']], id: 'hk' });
   ps.push({ k: 'margin', label: 'Margin around boards', step: 1, id: 'mg' });
   ps.push({ k: 'lattice', label: 'Open lattice (15 mm grid, zip-tie friendly)', type: 'chk', id: 'lat', span: 2, rerender: true });
   if (p.lattice) ps.push({ k: 'pitch', label: 'Grid pitch', step: 1, id: 'pi' }, { k: 'bar', label: 'Bar width', step: 0.5, id: 'ba' });
-  if (D.mode !== 'rack10') {
+  if (!MODES[D.mode].tray) {
     ps.push({ k: 'autoSize', label: 'Size the plate to the boards', type: 'chk', id: 'as', span: 2, rerender: true });
     if (!auto) { if (D.mode === 'din' || D.mode === 'skadis') ps.push({ k: 'L', label: 'Length (mm)', step: 1, id: 'L' }); ps.push({ k: 'H', label: 'Height (mm)', step: 1, id: 'H' }); }
   }
@@ -289,7 +297,7 @@ function setMesh(m, res) {
   if (res && res.flip) { ghosts.rotation.set(Math.PI, 0, 0); ghosts.position.set(0, res.flip.H, res.flip.t); }
   else { ghosts.rotation.set(0, 0, 0); ghosts.position.set(0, 0, 0); }
   if ($('ghost').checked) {
-    const base = D.mode === 'rack10' ? D.r10.floor : D.plate.t;
+    const base = MODES[D.mode].tray ? D.r10.floor : D.plate.t;
     for (const b of D.boards) {
       const f = footprint(b);
       const pcb = new THREE.Mesh(new THREE.BoxGeometry(f.fw, f.fh, b.t), new THREE.MeshStandardMaterial({ color: 0x1f8a4c, transparent: true, opacity: 0.55 }));
@@ -414,7 +422,7 @@ function placeNew(b) {
   // first free spot: right of or above an existing board, inside the usable area
   const lay = layout({ ...D, plate: { ...D.plate, autoSize: true } }), [ax0, ay0, ax1] = lay.area, gap = 6;
   const others = D.boards.filter(o => o !== b).map(footprint), f = footprint(b);
-  const x0 = ax0 + (D.mode === 'rack10' ? 4 : 3), y0 = ay0 + (D.mode === 'rack10' ? 2 : 1);
+  const x0 = ax0 + (MODES[D.mode].tray ? 4 : 3), y0 = ay0 + (MODES[D.mode].tray ? 2 : 1);
   const maxX = D.mode === 'din' ? 236 : ax1;
   const cands = [[x0, y0], ...others.map(o => [o.x1 + gap, o.y0]), ...others.map(o => [o.x0, o.y1 + gap]), ...others.map(o => [x0, o.y1 + gap])];
   cands.sort((a, c) => a[1] - c[1] || a[0] - c[0]);
@@ -424,8 +432,8 @@ function placeNew(b) {
 }
 function arrange() {
   const lay = layout({ ...D, plate: { ...D.plate, autoSize: true } }), [ax0, ay0] = lay.area;
-  const maxX = D.mode === 'homeracker' || D.mode === 'rack10' ? lay.area[2] : 236;
-  let x = ax0 + (D.mode === 'rack10' ? 4 : 3), y = ay0 + (D.mode === 'rack10' ? 2 : 1), rowH = 0;
+  const maxX = D.mode === 'homeracker' || MODES[D.mode].tray ? lay.area[2] : 236;
+  let x = ax0 + (MODES[D.mode].tray ? 4 : 3), y = ay0 + (MODES[D.mode].tray ? 2 : 1), rowH = 0;
   for (const b of D.boards) {
     const f = footprint(b);
     if (x + f.fw > maxX && x > ax0 + 4) { x = ax0 + 3; y += rowH + 6; rowH = 0; }

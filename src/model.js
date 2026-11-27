@@ -18,11 +18,17 @@ const SS_BOSS = 6, SS_D = 3.3, SS_NUT_AF = 5.8, SS_NUT_T = 2.8;
 // 10" rack (same as flat_tray_10in.scad)
 const R10 = { opening: 222.25, pitch: 236.525, hole_d: 6.4, panel_t: 5, side_t: 4, lip: 3, rear_h: 14, gusset: 40, band: 12 };
 R10.tray_w = R10.opening - 1.25;   // 221
+// half 19" (EIA-310: 450 mm opening, holes 465.1 mm apart, panel 482.6 mm): tray from the rail to the
+// rack centre with 0.625 mm play each side, ear and holes on the rail side only
+const R19H = { tray_w: 450 / 2 - 1.25, ear: 482.6 / 2 - 225 + 0.625, hole: 465.1 / 2 - 225 + 0.625 };
 const DIN_FOOT_H = 8;
+// label field on the front: 14 mm leaves room for 12 mm label tape
+const LBL = { h: 14, t: 2, w: 40 };
 
 export const MODES = {
   homeracker: { label: 'Rackerspace', sub: 'Blade on two 15 mm bars (HomeRacker caps, 180 mm apart)' },
-  rack10: { label: '10" rack', sub: 'Flat tray with rack ears, ports to the open front' },
+  rack10: { label: '10" rack', sub: 'Flat tray with rack ears, ports to the open front', tray: true },
+  rack19h: { label: '½ 19" rack', sub: 'Half-width tray for a 19" rack, ear on the left or right rail, ports to the open front', tray: true },
   din: { label: 'Hutschiene', sub: 'Blade that clips onto a 35 mm DIN rail (TS35)' },
   skadis: { label: 'SKÅDIS', sub: 'IKEA pegboard (5 × 15 mm slots, 40 mm apart, rows staggered by 20 mm): flat on the board, or a blade that sticks out' },
 };
@@ -40,11 +46,11 @@ export function newBoard(over = {}) {
 export function defaultDesign() {
   return {
     version: 1, name: 'plate', mode: 'homeracker',
-    plate: { t: 3, lattice: true, pitch: 15, bar: 3, holeKind: 'pilot', autoSize: true, L: 200, H: 100, margin: 5 },
-    hr: { span: 180, capLen: 30, clamp: 'ziptie', zipW: 5 },
+    plate: { t: 3, lattice: true, pitch: 15, bar: 3, holeKind: 'pilot', label: true, autoSize: true, L: 200, H: 100, margin: 5 },
+    hr: { span: 180, capLen: 30, clamp: 'ziptie', zipW: 5, label: 'left' },
     din: { clipW: 20, clear: 0.3, latch: 1.8, railX: 0 },
-    r10: { units: 1, depth: 0, panelW: 250, floor: 2.5 },
-    sk: { style: 'flat', fit: 0.6, boardT: 5, rows: 'top' },
+    r10: { units: 1, depth: 0, panelW: 250, floor: 2.5, label: 'left', side: 'left' },   // also used by rack19h
+    sk: { style: 'flat', fit: 0.6, boardT: 5, rows: 'top', label: 'bottom' },
     boards: [newBoard({ name: 'Raspberry Pi 4', x: 20, y: 12 })],
   };
 }
@@ -87,11 +93,13 @@ export function layout(d) {
     const blade = d.sk.style === 'blade';
     const L = p.autoSize ? Math.max(Math.ceil(e.x1 + m), blade ? 40 : 30) : p.L;
     // flat: the top 26 mm carry the hook slots, boards go below them
-    const H = p.autoSize ? Math.max(Math.ceil(e.y1 + (blade ? m : 28)), blade ? 30 : 45) : p.H;
+    // flat: the label strip goes above the hooks (top) or below the boards (bottom)
+    const lb = !blade && p.label, top = lb && d.sk.label === 'top' ? LBL.h : 0, bot = lb && !top ? LBL.h : 0;
+    const H = p.autoSize ? Math.max(Math.ceil(e.y1 + (blade ? m : 28 + top)), blade ? 30 : 45 + top + bot) : p.H;
     return blade ? { L, H, area: [10, 4, L - 3, H - 3], bot: 5, sides: ['SKÅDIS board (wall)', 'away from the wall', 'bottom', 'top'] }
-      : { L, H, area: [3, 3, L - 3, H - 26], bot: 5, sides: ['', '', 'bottom (front view)', 'top (hooks)'] };
+      : { L, H, area: [3, 3 + bot, L - 3, H - 26 - top], bot: 5, top, sides: ['', '', 'bottom (front view)', 'top (hooks)'] };
   }
-  const L = R10.tray_w;
+  const L = d.mode === 'rack19h' ? R19H.tray_w : R10.tray_w;
   const H = d.r10.depth > 0 ? d.r10.depth : Math.max(Math.ceil(e.y1 + m), 60);
   return { L, H, area: [R10.side_t, 2, L - R10.side_t, H], bot: 0, sides: ['left wall', 'right wall', 'FRONT (ears, open)', 'rear'] };
 }
@@ -157,7 +165,7 @@ function checks(d, lay, warn) {
 
 // ---------- the three modes ----------
 export function build(d) {
-  const lay = layout(d), { L, H } = lay, p = d.plate, warn = [], info = [], draw = [];
+  const lay = layout(d), { L, H } = lay, p = d.plate, lb = p.label, warn = [], info = [], draw = [];
   let cells = [], guides = null;
   checks(d, lay, warn);
   let node;
@@ -190,6 +198,12 @@ export function build(d) {
     // 45 degree gussets at the blade ends tie the 3 mm plate to the 30 mm caps
     const gus = [[t, bridge], [cl, bridge], [t, bridge + cl - t]].map(([z, y]) => [y, z]);
     caps.push(yz(gus, 0, 4), yz(gus, L - 4, 4));
+    if (lb) {   // label wall on the left or right end, whichever faces out of the rack
+      const right = d.hr.label === 'right', lx = right ? L - LBL.t : 0;
+      caps.push(cube([LBL.t, H - bridge, LBL.h], [lx, bridge, 0]));
+      draw.push({ r: [lx, bridge, LBL.t, H - bridge], k: 'wall' });
+      info.push(['Label', `${LBL.h} mm wide strip on the ${right ? 'right' : 'left'} end`]);
+    }
     const blockers = [[0, 0, 5, bridge + cl], [L - 5, 0, L, bridge + cl]];
     cells = p.lattice ? latticeHoles(5, lay.bot, L - 5, H - 5, p.pitch, p.bar, blockers, so.circles) : [];
     for (const cx of [HR_CAP / 2, L - HR_CAP / 2]) draw.push({ r: [cx - HR_CAP / 2 - (ss && cx < L / 2 ? SS_BOSS : 0), -HR_UNIT, HR_CAP + (ss ? SS_BOSS : 0), HR_UNIT + bridge], k: 'cap' });
@@ -203,7 +217,7 @@ export function build(d) {
     info.push(['Blade', `${f1(L)} × ${f1(H)} mm`]);
     info.push(['Height in rack', `${f1(total)} mm incl. bar and bracket → ${Math.ceil(total / U - 1e-6)}U`]);
     info.push(['Bars', `${d.hr.span} mm apart centre to centre`]);
-    const thick = Math.max(...d.boards.map(b => t + b.sh + b.t + b.comp), t);
+    const thick = Math.max(...d.boards.map(b => t + b.sh + b.t + b.comp), lb ? LBL.h : t);
     info.push(['Blade spacing', `≥ ${Math.ceil(thick / HR_UNIT) * HR_UNIT} mm (${f1(thick)} mm deep, rounded to 15 mm)`]);
     info.push(['Hardware', ss ? '2 × M3 nut + 2 × M3x10 set screw' : zt ? `${2 * nz} zip ties up to ${zw} mm wide (the HomeRacker pin hole stays)` : '2 HomeRacker lock pins']);
     if (zt) info.push(['Zip ties', `thread each tie through a channel just above the bar (${nz} per cap), down both cap walls, under the bar, and pull tight`]);
@@ -236,6 +250,11 @@ export function build(d) {
       hull2([...rect(rc + 17.5 + c - 2.2, zt - 0.8, 2.2, 0.8), ...rect(rc + 17.5 + c, zt - 1.8, 0.01, 1.8)]),
     ];
     for (const r of clip2d) parts.push(ext([r], cw));
+    if (lb) {   // label wall on the front (top) edge
+      parts.push(cube([L, LBL.t, LBL.h], [0, H - LBL.t, 0]));
+      draw.push({ r: [0, H - LBL.t, L, LBL.t], k: 'wall' });
+      info.push(['Label', `${LBL.h} mm wide strip on the front edge`]);
+    }
     const big = cw + 10;
     const cuts = [
       cube([1.0, fh - 2 + 1, big], [rc + 17.5 + c - 1.0, -1, -1]),
@@ -265,11 +284,16 @@ export function build(d) {
         draw.push({ r: [-dep - SK.legT, ys - SK.leg, dep + SK.legT, SK.stemH + SK.leg], k: 'cap' });
       }
       draw.push({ r: [0, 0, 6, H], k: 'wall' });
+      if (lb) {   // label wall on the front edge
+        parts.push(cube([LBL.t, H, LBL.h], [L - LBL.t, 0, 0]));
+        draw.push({ r: [L - LBL.t, 0, LBL.t, H], k: 'wall' });
+        info.push(['Label', `${LBL.h} mm wide strip on the front edge`]);
+      }
       cells = p.lattice ? latticeHoles(8, 5, L - 5, H - 5, p.pitch, p.bar, [[0, 0, 9, H]], so.circles) : [];
       node = dif(uni(ext([rect(0, 0, L, H), ...cells], t), parts, so.add), so.sub);
       info.push(['Blade', `${f1n(L)} × ${f1n(H)} mm, sticks out ${f1n(L)} mm from the board`]);
       info.push(['Hooks', `${hooks.length} in one slot column, 40 mm apart`]);
-      const thick = Math.max(...d.boards.map(b => t + b.sh + b.t + b.comp), sw);
+      const thick = Math.max(...d.boards.map(b => t + b.sh + b.t + b.comp), lb ? LBL.h : sw);
       info.push(['Blade spacing', `≥ ${Math.ceil(thick / SK.row) * SK.row} mm (neighbouring slot columns are 20 mm apart, their slots sit 20 mm higher)`]);
       if (!hooks.length) warn.push('The blade is too low for a hook; make it at least 17 mm tall.');
     } else {
@@ -280,7 +304,8 @@ export function build(d) {
       const n = Math.max(1, Math.floor((L - 20) / SK.pitch) + 1), cols = [];
       for (let k = 0; k < n; k++) cols.push(L / 2 + SK.pitch * (k - (n - 1) / 2));
       const rows = [];
-      for (let ys = H - 6 - SK.slotH; ys >= 4; ys -= SK.pitch) { rows.push(ys); if (d.sk.rows !== 'all') break; }
+      const lblY = lay.top ? H - LBL.h - 2 : 1;   // solid strip, no lattice, for the label
+      for (let ys = H - lay.top - 6 - SK.slotH; ys >= 4 + (lb && !lay.top ? LBL.h + 2 : 0); ys -= SK.pitch) { rows.push(ys); if (d.sk.rows !== 'all') break; }
       const so = standoffs(d, t), cuts = [], blockers = [], hookParts = [];
       const headT = 2.5, headOver = 3, stemL = t + dep;
       for (const hx of cols) for (const ys of rows) {
@@ -314,7 +339,11 @@ export function build(d) {
         if (b.sh < headT + 1 && blockers.some(r => f.x0 < r[2] && f.x1 > r[0] && f.y0 < r[3] && f.y1 > r[1]))
           warn.push(`${b.name}: the hook heads stick out ${headT} mm, so the standoffs must be taller over them.`);
       }
-      cells = p.lattice ? latticeHoles(5, 5, L - 5, H - 5, p.pitch, p.bar, blockers, so.circles) : [];
+      if (lb) {
+        draw.push({ r: [3, lblY, L - 6, LBL.h], k: 'rail' });
+        info.push(['Label', `${LBL.h} mm solid strip at the ${lay.top ? 'top' : 'bottom'}`]);
+      }
+      cells = p.lattice ? latticeHoles(5, 5, L - 5, H - 5, p.pitch, p.bar, lb ? [...blockers, [0, lblY - 2, L, lblY + LBL.h + 2]] : blockers, so.circles) : [];
       node = uni(dif(uni(ext([rect(0, 0, L, H), ...cells], t), so.add), cuts, so.sub), hookParts);
       info.push(['Plate', `${f1n(L)} × ${f1n(H)} mm, ${hooks.length} hook slot${hooks.length === 1 ? '' : 's'} on the 40 mm grid`]);
       info.push(['Hooks', `${hooks.length} separate hooks, in the same file below the plate, printed on their side`]);
@@ -327,29 +356,47 @@ export function build(d) {
 
   else {
     const r = d.r10, ft = r.floor, st = R10.side_t, topZ = r.units * U - 0.8, so = standoffs(d, ft);
-    const pw = r.panelW, hx = R10.tray_w / 2 - R10.pitch / 2;
-    const parts = [cube([R10.tray_w - 2 * st, 2, ft + R10.lip], [st, 0, 0])];
+    // ears: how far the ear edge and the hole centre sit outside the tray edge, and on which sides
+    const half = d.mode === 'rack19h', tw = L, pw = r.panelW;
+    const eo = half ? R19H.ear : pw / 2 - tw / 2, ho = half ? R19H.hole : R10.pitch / 2 - tw / 2;
+    const ears = half ? [r.side === 'right' ? 1 : -1] : [-1, 1];
+    const parts = [cube([tw - 2 * st, 2, ft + R10.lip], [st, 0, 0])];
+    // label field: the front lip goes up to LBL.h over LBL.w mm at one side, the rest stays open for ports
+    const lx = r.label === 'right' ? tw - st - LBL.w : st;
+    if (lb) parts.push(cube([LBL.w, 2, LBL.h], [lx, 0, 0]));
     const gz = Math.min(R10.gusset, H - 1);
     const wall = [[0, 0], [H, 0], [H, ft + R10.rear_h], [gz, topZ], [0, topZ]];
-    parts.push(yz(wall, 0, st), yz(wall, R10.tray_w - st, st));
-    const earW = pw / 2 - (R10.tray_w / 2 - st), holes = [];
-    for (const sx of [-1, 1]) {
-      const x0 = sx < 0 ? R10.tray_w / 2 - pw / 2 : R10.tray_w - st;
+    parts.push(yz(wall, 0, st), yz(wall, tw - st, st));
+    const earW = eo + st, holes = [];
+    for (const sx of ears) {
+      const x0 = sx < 0 ? -eo : tw - st;
       parts.push(cube([earW, R10.panel_t, topZ], [x0, 0, 0]));
+      draw.push({ r: [x0, 0, earW, R10.panel_t], k: 'cap' });
       for (let u = 0; u < r.units; u++) for (const hz of [6.35, 38.1]) {
-        const x = sx < 0 ? hx : R10.tray_w - hx;
+        const x = sx < 0 ? -ho : tw + ho;
         holes.push(tr([x, -1, u * U + hz], rot([-90, 0, 0], ext([teardrop(R10.hole_d, 0, -1)], R10.panel_t + 2))));
       }
     }
-    cells = p.lattice ? latticeHoles(st + R10.band, R10.band, R10.tray_w - st - R10.band, H - 6, p.pitch, p.bar, [], so.circles) : [];
-    node = dif(uni(ext([rect(0, 0, R10.tray_w, H), ...cells], ft), parts, so.add), holes, so.sub);
-    draw.push({ r: [R10.tray_w / 2 - pw / 2, 0, earW, R10.panel_t], k: 'cap' }, { r: [R10.tray_w - st, 0, earW, R10.panel_t], k: 'cap' },
-      { r: [0, 0, st, H], k: 'wall' }, { r: [R10.tray_w - st, 0, st, H], k: 'wall' }, { r: [st, 0, R10.tray_w - 2 * st, 2], k: 'wall' });
-    info.push(['Tray', `${r.units}U, ${pw} mm across the ears, ${f1n(H)} mm deep`]);
-    info.push(['Inner width', `${f1n(R10.tray_w - 2 * st)} mm between the side walls`]);
-    info.push(['Rack holes', `M6, ${R10.pitch} mm apart, 2 per U`]);
+    cells = p.lattice ? latticeHoles(st + R10.band, R10.band, tw - st - R10.band, H - 6, p.pitch, p.bar, [], so.circles) : [];
+    node = dif(uni(ext([rect(0, 0, tw, H), ...cells], ft), parts, so.add), holes, so.sub);
+    draw.push({ r: [0, 0, st, H], k: 'wall' }, { r: [tw - st, 0, st, H], k: 'wall' }, { r: [st, 0, tw - 2 * st, 2], k: 'wall' });
+    if (lb) {
+      draw.push({ r: [lx, 0, LBL.w, 2], k: 'wall' });
+      info.push(['Label', `${LBL.w} × ${LBL.h} mm on the front lip, ${r.label === 'right' ? 'right' : 'left'} side`]);
+    }
+    if (half) {
+      info.push(['Tray', `${r.units}U, half 19", ear on the ${ears[0] > 0 ? 'right' : 'left'} rail, ${f1n(tw + eo)} mm wide, ${f1n(H)} mm deep`]);
+      info.push(['Rack holes', `M6, 2 per U, on one rail only`]);
+      info.push(['Support', 'held by one ear only: put a second half tray next to it or support the free side for heavy boards']);
+    } else {
+      info.push(['Tray', `${r.units}U, ${pw} mm across the ears, ${f1n(H)} mm deep`]);
+      info.push(['Rack holes', `M6, ${R10.pitch} mm apart, 2 per U`]);
+    }
+    info.push(['Inner width', `${f1n(tw - 2 * st)} mm between the side walls`]);
     for (const b of d.boards) {
       const top = ft + b.sh + b.t + b.comp;
+      const f = footprint(b);
+      if (lb && f.y0 < 10 && f.x0 < lx + LBL.w && f.x1 > lx) warn.push(`${b.name}: the label field (${LBL.h} mm tall) sits in front of it and may cover low ports.`);
       if (top > r.units * U - 0.5) warn.push(`${b.name}: top at ${f1n(top)} mm is taller than ${r.units}U (${f1n(r.units * U)} mm).`);
     }
     if (H > 240) warn.push('Tray is deeper than 240 mm, which will not fit a 250 mm bed.');

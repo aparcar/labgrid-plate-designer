@@ -10,6 +10,7 @@ have to form a rectangle), then export STL, OpenSCAD or a design file.
 |---|---|---|
 | Rackerspace | blade standing on the two 15 mm bars (HomeRacker caps, 180 mm apart). Fixed with zip ties by default: each cap has channels just above the bar, so a tie goes through, down both cap walls and under the bar. M3 set screw or lock pin only are options | `rack-mount/dut_blade.scad` |
 | 10" rack | flat tray with M6 ears (236.525 mm), side walls, front lip, open front | `rack-mount/flat_tray_10in.scad` |
+| ½ 19" rack | half-width tray (223.75 mm) for a 19" rack: one ear with M6 holes on the left or the right rail, side walls, front lip, open front. Two halves fill one U; a single half hangs from one rail only | EIA-310: 450 mm opening, holes 465.1 mm apart, panel 482.6 mm |
 | Hutschiene | blade that clips onto a TS35 DIN rail, same clip as the DUT blades | `rack-mount/dut_blade.scad` |
 | SKÅDIS, flat | plate that hangs flat on an IKEA SKÅDIS pegboard. It prints on its back with printed standoffs and has SKÅDIS-sized slots on the 40 mm grid. Separate hooks (in the same STL, laid out below the plate) print on their side | IKEA SKÅDIS: 5 mm board, 5 x 15 mm slots, 40 mm apart, rows 20 mm apart and staggered by 20 mm |
 | SKÅDIS, blade | blade that sticks out from the pegboard, hooks along its rear edge (one slot column), printed standoffs, no supports | same |
